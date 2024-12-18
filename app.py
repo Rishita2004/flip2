@@ -1,44 +1,65 @@
 import streamlit as st
+from ultralytics import YOLO
 from PIL import Image
 import torch
 import os
 
-# Load the model
-@st.cache_resource
+# Set Streamlit page config
+st.set_page_config(
+    page_title="YOLOv11 Item Detection",
+    page_icon="🛒",
+    layout="wide"
+)
+
+# Title and description
+st.title("YOLOv11 Item Detection App")
+st.write("Upload an image to detect items using the trained YOLOv11 model.")
+
+# Sidebar
+st.sidebar.header("Upload Image")
+uploaded_file = st.sidebar.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
+
+# Load YOLO model
+@st.cache_resource  # Cache the model for better performance
 def load_model():
-    model = torch.hub.load("ultralytics/yolov11n", "custom", path="best.pt", force_reload=True)
+    model = YOLO("best.pt")  # Replace 'best.pt' with the path to your model
     return model
 
-# Initialize the model
 model = load_model()
 
-# Streamlit app
-st.title("YOLOv11n Object Detection")
-st.subheader("Upload an image to detect objects")
-
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
-
+# Process uploaded image
 if uploaded_file is not None:
-    # Save the uploaded file to disk
-    input_image_path = f"./{uploaded_file.name}"
-    with open(input_image_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    
-    # Run inference
-    st.image(Image.open(input_image_path), caption="Uploaded Image", use_column_width=True)
-    st.write("Running object detection...")
+    # Display uploaded image
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    results = model.predict(input_image_path, save=True, conf=0.5)
-    detection_output = results.pandas().xyxy[0]  # Get the detections as a pandas DataFrame
+    # Save the uploaded file to a temporary location
+    temp_file_path = f"temp_{uploaded_file.name}"
+    image.save(temp_file_path)
 
-    # Display detections
-    st.write(f"Detection Results:\n{detection_output}")
+    # Perform prediction
+    st.write("Detecting items...")
+    results = model.predict(source=temp_file_path, conf=0.5, save=False)
 
-    # Display the image with detections
-    result_dir = "runs/detect"  # Default directory where YOLO saves results
-    result_subdir = sorted(os.listdir(result_dir))[-1]  # Get the latest run directory
-    result_image_path = os.path.join(result_dir, result_subdir, uploaded_file.name)
-    st.image(Image.open(result_image_path), caption="Detected Objects", use_column_width=True)
+    # Display predictions
+    predictions = results[0]
+    st.write(f"Detected objects: {len(predictions.boxes)}")
 
-    # Cleanup the saved input file
-    os.remove(input_image_path)
+    # Draw boxes on the image
+    for box in predictions.boxes:
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        confidence = box.conf[0]
+        class_name = results.names[int(box.cls[0])]
+        st.write(f"Class: {class_name}, Confidence: {confidence:.2f}")
+
+    # Display annotated image
+    annotated_image_path = os.path.join("runs", "predict", "image.jpg")  # Modify if needed
+    if os.path.exists(annotated_image_path):
+        st.image(annotated_image_path, caption="Annotated Image", use_column_width=True)
+
+    # Cleanup
+    os.remove(temp_file_path)
+
+# Instructions if no file is uploaded
+else:
+    st.write("Upload an image to get started.")
