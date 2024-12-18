@@ -1,65 +1,67 @@
 import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
-import torch
 import os
+from collections import Counter
 
-# Set Streamlit page config
+# Streamlit page configuration
 st.set_page_config(
-    page_title="YOLOv11 Item Detection",
-    page_icon="🛒",
+    page_title="YOLO Item Counter",
+    page_icon="📦",
     layout="wide"
 )
 
 # Title and description
-st.title("YOLOv11 Item Detection App")
-st.write("Upload an image to detect items using the trained YOLOv11 model.")
-
-# Sidebar
-st.sidebar.header("Upload Image")
-uploaded_file = st.sidebar.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
+st.title("YOLO Item Counter App")
+st.write("Upload an image to detect and count items using the trained YOLO model.")
 
 # Load YOLO model
-@st.cache_resource  # Cache the model for better performance
+@st.cache_resource  # Cache the model to avoid reloading every time
 def load_model():
-    model = YOLO("best.pt")  # Replace 'best.pt' with the path to your model
+    model = YOLO("best.pt")  # Ensure 'best.pt' is in the same directory as this script
     return model
 
 model = load_model()
 
-# Process uploaded image
+# Sidebar for uploading an image
+st.sidebar.header("Upload Image")
+uploaded_file = st.sidebar.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
+
+# Process the uploaded image
 if uploaded_file is not None:
-    # Display uploaded image
+    # Open and display the uploaded image
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Save the uploaded file to a temporary location
-    temp_file_path = f"temp_{uploaded_file.name}"
+    # Save the uploaded image temporarily
+    temp_file_path = "uploaded_image.jpg"
     image.save(temp_file_path)
 
-    # Perform prediction
-    st.write("Detecting items...")
-    results = model.predict(source=temp_file_path, conf=0.5, save=False)
+    # Perform predictions
+    st.write("Detecting and counting items...")
+    results = model.predict(source=temp_file_path, conf=0.5, save=False)  # Perform inference
 
-    # Display predictions
-    predictions = results[0]
-    st.write(f"Detected objects: {len(predictions.boxes)}")
+    # Parse results to count objects
+    detected_classes = []
+    for result in results:
+        for box in result.boxes:
+            class_id = int(box.cls[0])  # Class index
+            class_name = result.names[class_id]  # Class name
+            detected_classes.append(class_name)
 
-    # Draw boxes on the image
-    for box in predictions.boxes:
-        x1, y1, x2, y2 = box.xyxy[0].tolist()
-        confidence = box.conf[0]
-        class_name = results.names[int(box.cls[0])]
-        st.write(f"Class: {class_name}, Confidence: {confidence:.2f}")
+    # Count occurrences of each class
+    class_counts = Counter(detected_classes)
 
-    # Display annotated image
-    annotated_image_path = os.path.join("runs", "predict", "image.jpg")  # Modify if needed
-    if os.path.exists(annotated_image_path):
-        st.image(annotated_image_path, caption="Annotated Image", use_column_width=True)
+    # Display the counts
+    st.write("### Item Counts:")
+    for class_name, count in class_counts.items():
+        st.write(f"- **{class_name}**: {count}")
 
-    # Cleanup
+    # Remove the temporary image file
     os.remove(temp_file_path)
 
-# Instructions if no file is uploaded
 else:
-    st.write("Upload an image to get started.")
+    st.write("Please upload an image to start detection.")
+
+# Footer
+st.sidebar.markdown("Developed with 💡 by [Your Name]")
